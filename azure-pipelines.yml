@@ -1,0 +1,245 @@
+# Documentation
+#
+# Set the vX.X.X-X tag (vMAJOR.MINOR.PATCH-BUILD_NUMBER) to trigger the pipeline
+# Install the Mobile Versioning in your Azure workspace https://marketplace.visualstudio.com/items?itemName=DamienAicheh.mobile-versioning-task
+# 
+#variables:
+#- group: MAUI vars
+
+parameters:
+  - name: environment
+    displayName: Select an Environment
+    type: string
+    default: 'Staging'
+    values:
+    - Production
+    - Staging
+
+stages:
+  # Stage for MAUI iOS
+- stage: build_maui_ios
+  jobs:
+  - job: build_maui_ios_app
+    displayName: Build App for iOS
+    pool:
+      vmImage: "macos-13"
+      demands: xcode
+    
+    steps:
+    
+    - script: |
+        echo Environment $(ENVIRONMENT)
+        echo iOS app ID: $(app-id-ios) 
+        echo Agent.JobName $(Agent.JobName)
+        echo Agent.Id $(Agent.Id)
+        echo Agent.Name $(Agent.Name)
+      displayName: Display Vars
+    
+    - task: InstallAppleCertificate@2
+      inputs:
+        certSecureFile: '$(apple-certificate-name)'
+        certPwd: '$(apple-certificate-password)'
+        keychain: 'temp'
+    
+    - task: InstallAppleProvisioningProfile@1
+      inputs:
+        provisioningProfileLocation: 'secureFiles'
+        provProfileSecureFile: '$(apple-provisioning-profile-name)'
+    
+    #  # Extract the version of the last tag you pushed to your Git repository, from the branch you selected to build your pipeline.
+    # - task: ExtractVersionFromTag@1
+    #   displayName: 'Get git tag version'
+    #   inputs:
+    #     projectFolderPath: '$(Build.SourcesDirectory)'
+        
+
+    - task: UseDotNet@2
+      displayName: Install .NET SDK
+      inputs:
+        packageType: 'sdk'
+        version: '$(dotnet-version)'
+        includePreviewVersions: false
+    
+        # Install all workloads your solution is supported
+    - powershell: dotnet workload install maui-android maui-ios maui-tizen
+      displayName: Install .NET MAUI Workload
+      
+  # build project
+    - task: CmdLine@2
+      displayName: 'Build project'
+      inputs:
+       script: |
+         dotnet publish -f $(app-target-framework-ios) -c Release /p:ApplicationDisplayVersion=$(app-display-version) /p:ApplicationVersion=$(app-display-version) /p:ArchiveOnBuild=true /p:EnableAssemblyILStripping=false
+
+ #/p:IpaPackageName=$(app-id-ios) renames the ipa
+# $(app-path-project) 
+#/p:ApplicationDisplayVersion=$(MAJOR).$(MINOR).$(PATCH) /p:ApplicationVersion=$(PRE_RELEASE)
+    - task: CopyFiles@2
+      displayName: 'Copy files to: $(build.artifactstagingdirectory)'
+      inputs:
+        SourceFolder: '$(Agent.BuildDirectory)'
+        Contents: '**/*.ipa'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+        CleanTargetFolder: true
+        flattenFolders: true
+      
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop_maui_ios'
+        publishLocation: 'Container'
+
+    - task: CopyFiles@2
+      displayName: 'Copy files to: $(build.artifactstagingdirectory)'
+      inputs:
+        SourceFolder: '$(system.defaultworkingdirectory)'
+        Contents: '**\bin\**'
+        TargetFolder: '$(build.artifactstagingdirectory)'
+        CleanTargetFolder: true
+        
+    - task: AppCenterDistribute@3
+      inputs:
+        serverEndpoint: 'AssureMauiAppcenterConnection'
+        appSlug: 'its-2/Assure-MAUI-iOS'
+        appFile: '$(build.artifactstagingdirectory)/*.ipa'    #'$(build.artifactstagingdirectory)/$(app-id-ios).ipa'
+        releaseNotesOption: 'input'
+        releaseNotesInput: '.'
+        destinationType: 'groups'
+
+
+#-------------------- ANDROID ------------------------------------------------
+
+  # Stage for MAUI Android
+- stage: build_maui_android
+  jobs:
+  - job: build_maui_android_app
+    displayName: Build App for Android
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - MSBuild
+      
+    steps:
+
+    # Extract the version of the last tag you pushed to your Git repository, from the branch you selected to build your pipeline.
+    # - task: ExtractVersionFromTag@1
+    #   displayName: 'Get git tag version'
+    #   inputs:
+    #     projectFolderPath: '$(Build.SourcesDirectory)'
+    
+     # Download the keystore from secured files
+    - task: DownloadSecureFile@1
+      name: keystore
+      displayName: Download keystore 
+      inputs:
+        secureFile: '$(android-keystore-name)'
+
+
+    - script: |
+        echo Downloaded $(keystore.secureFilePath)
+        echo Environment $(ENVIRONMENT)
+        echo Working Directory $(System.DefaultWorkingDirectory)\\$(android-keystore-name)
+        echo Copy Location $(app-build-configuration)\$(app-target-framework-android)\**
+        echo Copy2 Location $(app-build-configuration)/$(app-target-framework-android)/
+        echo iOS app ID: $(app-id-ios) 
+        mv $(keystore.secureFilePath) $(System.DefaultWorkingDirectory)
+      displayName: Move Keystore to Working Directory
+
+    # # Download the Google Firebase Configuration from secured files
+    # - task: DownloadSecureFile@1
+    #   name: firebase
+    #   displayName: Download Firebase Configuration 
+    #   inputs:
+    #     secureFile: '$(google-android-config-file)'
+
+    # - script: |
+    #     echo Downloaded $(firebase.secureFilePath)
+    #     mv $(firebase.secureFilePath) $(System.DefaultWorkingDirectory)/$(app-path-root)/google-services.json
+    #   displayName: Move Firebase configuration to Working Directory
+
+    # Install .NET SDKs  
+    
+
+    # Install Java SDK for Android
+    - task: JavaToolInstaller@0
+      displayName: Install Java SDK
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+    
+    - task: UseDotNet@2
+      displayName: Install .NET SDK
+      inputs:
+        packageType: 'sdk'
+        version: '$(dotnet-version)'
+        includePreviewVersions: false
+    
+    # Install all workloads your solution is supported
+    - powershell: dotnet workload install maui-android maui-ios maui-tizen
+      displayName: Install .NET MAUI Workload
+
+
+    # build project
+    #NOTE: the iOS and Android versioning is different. Android requires a int appversion.
+    - task: CmdLine@2
+      displayName: 'Build project'
+      inputs:
+        script: |
+         d MauiPipelineTest
+          dotnet publish -f:$(app-target-framework-android) -c Release /p:ApplicationId=$(app-id-android) /p:ApplicationDisplayVersion=$(app-display-version) /p:ApplicationVersion=$(app-version)  /p:AndroidSigningKeyPass=$(android-signing-key-password) /p:AndroidSigningStorePass=$(android-keystore-password) /p:AndroidSigningKeyStore=$(System.DefaultWorkingDirectory)\\$(android-keystore-name) /p:AndroidSigningKeyAlias=$(android-keystore-alias) /p:AndroidKeyStore=true
+
+    #/p:ApplicationDisplayVersion=$(MAJOR).$(MINOR).$(PATCH).$(PRE_RELEASE) /p:ApplicationVersion=$(MAJOR)$(MINOR)$(PATCH)$(PRE_RELEASE)
+    # Copy files to artifact directory  Temporary just to make sure the AAB is generated and signed correctly
+    # - task: CopyFiles@2
+    #   displayName: 'Copy files to: $(build.artifactstagingdirectory)'
+    #   inputs:
+    #     SourceFolder: '$(system.defaultworkingdirectory)'
+    #     Contents: '$(app-build-configuration)\$(app-target-framework-android)\**'
+    #     TargetFolder: '$(build.artifactstagingdirectory)'
+    #     CleanTargetFolder: true
+        
+    - task: CopyFiles@2
+      displayName: 'Copy apk to: $(build.artifactstagingdirectory)'
+      inputs:
+        SourceFolder: '$(system.defaultworkingdirectory)'
+        Contents:  '**/*.apk'
+        TargetFolder: '$(build.artifactstagingdirectory)'
+        FlattenFolders: true
+        CleanTargetFolder: true
+   
+
+    - task: CopyFiles@2
+      displayName: 'Copy aab to: $(build.artifactstagingdirectory)'
+      inputs:
+        SourceFolder: '$(system.defaultworkingdirectory)'
+        Contents:  '**/*.aab'
+        TargetFolder: '$(build.artifactstagingdirectory)'
+        FlattenFolders: true
+        CleanTargetFolder: false
+            
+    # - task: CopyFiles@2
+    #   displayName: 'Copy files to: $(build.artifactstagingdirectory) - Part 3'
+    #   inputs:
+    #     SourceFolder: '$(system.defaultworkingdirectory)'
+    #     Contents: '$(app-build-configuration)/$(app-target-framework-android)/**'
+    #     TargetFolder: '$(build.artifactstagingdirectory)'
+    #     CleanTargetFolder: true
+    
+    # Publish artifacts
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        PathtoPublish: '$(build.artifactstagingdirectory)'
+        ArtifactName: 'drop_maui_android'
+        publishLocation: 'Container'  
+    
+    - task: AppCenterDistribute@3
+      inputs:
+        serverEndpoint: 'AssureMauiDroidConnection'
+        appSlug: 'its-2/Assure-MAUI-Android'
+        appFile: '$(build.artifactstagingdirectory)/*-Signed.aab'
+        releaseNotesOption: 'input'
+        releaseNotesInput: '.'
+        destinationType: 'groups'
