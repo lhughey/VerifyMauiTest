@@ -69,7 +69,7 @@ stages:
       displayName: 'Build project'
       inputs:
        script: |
-         dotnet publish -f $(app-target-framework-ios) -c Release /p:ApplicationDisplayVersion=$(app-display-version) /p:ApplicationVersion=$(app-display-version) /p:ArchiveOnBuild=true /p:EnableAssemblyILStripping=false /p:CodesignKey="Apple Distribution: Industrial Training Services, Inc. (V4BSB5L66X)" /p:CodesignProvision="Onboard_Verify_Ad_Hoc"
+         dotnet publish -f $(app-target-framework-ios) -c Release /p:ApplicationDisplayVersion=$(app-display-version) /p:ApplicationVersion=$(app-display-version) /p:ArchiveOnBuild=true /p:EnableAssemblyILStripping=false /p:CodesignKey=$(apple-codesign-key) /p:CodesignProvision=$(codesignProvisionProvisioningProfile)
 
  #/p:IpaPackageName=$(app-id-ios) renames the ipa
 # $(app-path-project) 
