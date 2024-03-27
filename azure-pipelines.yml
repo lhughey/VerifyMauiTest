@@ -100,7 +100,7 @@ stages:
         
     - task: AppCenterDistribute@3
       inputs:
-        serverEndpoint: 'AssureMauiAppcenterConnection'
+        serverEndpoint: 'VerifyMauiIOSAppcenterConnection'
         appSlug: 'its-2/Assure-MAUI-iOS'
         appFile: '$(build.artifactstagingdirectory)/*.ipa'    #'$(build.artifactstagingdirectory)/$(app-id-ios).ipa'
         releaseNotesOption: 'input'
@@ -237,7 +237,7 @@ stages:
     
     - task: AppCenterDistribute@3
       inputs:
-        serverEndpoint: 'AssureMauiDroidConnection'
+        serverEndpoint: 'VerifyMauiDroidAppcenterConnection'
         appSlug: 'its-2/Assure-MAUI-Android'
         appFile: '$(build.artifactstagingdirectory)/*-Signed.aab'
         releaseNotesOption: 'input'
